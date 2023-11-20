@@ -5,8 +5,11 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"sync"
+
+	"github.com/sirupsen/logrus"
 )
 
 type Server struct {
@@ -36,7 +39,31 @@ func NewServer(addr string) *Server {
 }
 
 func (s *Server) Start() {
+	go s.loop()
+	s.transport.ListenAndAccept()
+}
 
+func (s *Server) loop() {
+	for {
+		select {
+		case peer := <-s.addPeerCh:
+			if err := s.handlePeer(peer); err != nil {
+				logrus.Errorf("handle error: %s\n", err)
+			}
+		case peer := <-s.delPeerCh:
+			if err := s.delPeer(peer); err != nil {
+				logrus.Errorf("unable to remove peer: %s\n", err)
+			}
+		case msg := <-s.msgCh:
+			log.Println(msg)
+		}
+	}
+	// here the server loops and uses the for-select pattern
+}
+
+func (s *Server) handlePeer(p *Peer) error {
+	// method that handles a new peer
+	return nil
 }
 
 func (s *Server) addPeer(p *Peer) {
@@ -45,11 +72,11 @@ func (s *Server) addPeer(p *Peer) {
 	s.peers[p.conn.RemoteAddr()] = p
 }
 
-func (s *Server) delPeer(p *Peer) {
+func (s *Server) delPeer(p *Peer) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	p.conn.Close()
 	delete(s.peers, p.conn.RemoteAddr())
+	return p.conn.Close()
 }
 
 func (s *Server) handshake(p *Peer) error {
